@@ -6,6 +6,11 @@ JUMP_KEY_NAME = "SPACE"
 
 BLACK = color(0)
 WHITE = color(255)
+RED = color(255, 0, 0)
+GREEN = color(0, 255, 0)
+BLUE = color(0, 0, 255)
+
+GROUND_HEIGHT = 700
 
 screen = None
 itr = 0
@@ -15,16 +20,17 @@ def setup():
     
     global screen
     # screen = TitleScreen()
-    screen = EndScreen("test")
+    screen = GameScreen()
+    # screen = EndScreen("test")
     
 def draw():
     global itr
     
     background(WHITE)
-    # print("UPDATE " + str(itr))
+    print("UPDATE " + str(itr))
     screen.update()
     
-    # print("SHOW " + str(itr))
+    print("SHOW " + str(itr))
     screen.show()
     
     itr += 1
@@ -67,13 +73,14 @@ class GameScreen(Screen):
     """The game itself."""
     def __init__(self):
         self.space_pressed = False
+        self.player = Player()
         
     def update(self):
-        pass
+        self.player.update()
     
     def show(self):
-        pass
-    
+        self.player.show()
+            
     def key_pressed(self):
         if key == JUMP_KEY:
             self.space_pressed = True
@@ -108,3 +115,19 @@ class EndScreen(Screen):
         if key == JUMP_KEY:
             global screen
             screen = GameScreen()
+            
+            
+class Player(object):
+    def __init__(self):
+        self.size = PVector(50, 100)
+        self.position = PVector(150, GROUND_HEIGHT - self.size.y)
+    
+    def update(self):
+        pass
+        
+    def show(self):
+        rectMode(CORNER)
+        fill(RED)
+        noStroke()
+        rect(self.position.x, self.position.y, self.size.x, self.size.y)
+        
