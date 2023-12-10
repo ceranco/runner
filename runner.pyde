@@ -23,6 +23,11 @@ SEGMENT_REGULAR = 0
 SEGMENT_PIT = 1
 SEGMENT_TYPES = [SEGMENT_REGULAR, SEGMENT_PIT]
 
+OBSTACLE_GROUND = 0
+OBSTACLE_AIR = 1
+OBSTACLE_TYPES = [None, OBSTACLE_GROUND, OBSTACLE_AIR]
+OBSTACLE_PROBS = [15, 3, 2]
+
 FALL_THRESHHOLD = 30
 
 screen = None
@@ -170,6 +175,8 @@ class Player(object):
         # Check collisions - either with land or obstacles.
         if is_land_segment and not self.on_land and self.landscape.height <= self.position.y + self.size.y:
             print("BOOM")
+            self.position.y = self.landscape.height - self.size.y
+            self.on_land = True
 
         
     def show(self):
@@ -179,7 +186,12 @@ class Player(object):
         rect(self.position.x, self.position.y, self.size.x, self.size.y)
         
     def jump_press(self):
-        """Start jumping."""
+        """
+        Start jumping.
+        
+        The vertical velocity will increase up to a set maximum as long as `jump_release` is not called.
+        In this way, the height of the jump may be controlled to allow for more granular control of the player.
+        """
         if self.on_land:
             self.mid_jump = True
             self.jump_started = millis()
@@ -189,7 +201,8 @@ class Player(object):
     def jump_release(self):
         """Stop jumping."""
         if self.mid_jump:
-            self.velocity.y = self._get_jump_velocity(millis() - self.jump_started)
+            delta = millis() - self.jump_started
+            self.velocity.y = self._get_jump_velocity(delta)
             
         self.mid_jump = False
         
@@ -203,11 +216,12 @@ class Player(object):
         
 class Landscape(object):
     """
-    The landscape that the player runs on.
+    The environment, which consistes of the landscape that the player runs on and the obstacles.
     
     The logical representation of the landscape will be an array that always has at least 11 elements, where each 
     element's width is exactly 1/10 of the window size.
     As the landscape scrolls by, old segments will be discarded and new segment generated dynamically.
+    An obstacle array of exactly 11 is also generated, with at most one obstacle per segment.
     
     At any given point, at most (parts of) 11 segments will be seen.
     """
@@ -219,20 +233,28 @@ class Landscape(object):
         self.velocity = INITIAL_VELOCITY
         self.num_segments = 10
         self.segments = [SEGMENT_REGULAR for _ in range(self.num_segments + 1)]
+        self.obstacles = [None for _ in self.segments]
         self.gap = self.width // self.num_segments
-        
+                
     def update(self):
         self.position += self.velocity
         
         if self.position >= self.gap:
+            # Generate a new segment and an optional obstacles.
             self.position -= self.gap
             del self.segments[0]
+            del self.obstacles[0]
             
-            # Make sure that no more than 2 continous segments are pits.
-            if all([seg == SEGMENT_PIT for seg in self.segments[-2:]]):
-                self.segments.append(SEGMENT_REGULAR)
-            else:
-                self.segments.append(random.choice(SEGMENT_TYPES))
+            # Only generate new terrain if needed.
+            if len(self.segments) == self.num_segments:
+                new_segments, new_obstacles = self.random_configuration()
+                
+                self.segments += new_segments
+                self.obstacles += new_obstacles
+            
+        for obstacle in self.obstacles:
+            if obstacle is not None:
+                obstacle.update()
         
     def show(self):
         pushStyle()
@@ -243,12 +265,15 @@ class Landscape(object):
         # Add some lines to see the landscape moving
   
         x = -self.position
-        for segment in self.segments:
+        for segment, obstacle in zip(self.segments, self.obstacles):
             if segment == SEGMENT_REGULAR:
                 rect(x, self.height, self.gap, WINDOW_HEIGHT - self.height)
                 
             elif segment == SEGMENT_PIT:
                 pass
+                
+            if obstacle is not None:
+                obstacle.show(x + self.gap // 2 - obstacle.size.x // 2)
                 
             pushStyle()
             stroke(WHITE)
@@ -258,9 +283,67 @@ class Landscape(object):
             x += self.gap
 
         popStyle()
-    
+            
     def segment_type_at(self, x):
         """Get the segment type in the given x coordinate."""
         idx = int(x + self.position) // self.gap 
 
         return self.segments[idx]
+    
+    def random_configuration(self):
+        """
+        Generate a random environment configuration, which is a sequence of 0, 1 or 2 pits enclosed in regular landscape (only 1 segment for 0 pits).
+        For each configuration there is at most 1 obstacle on the regular segments.
+        """
+        num_pits = random_choice([0, 1, 2], [14, 5, 3])
+        segments = [SEGMENT_REGULAR] + [SEGMENT_PIT] * num_pits + ([SEGMENT_REGULAR] if num_pits > 0 else [])
+        
+        obstacle_idx = random.randint(-1, 0)
+        obstacle_type = random_choice(OBSTACLE_TYPES, OBSTACLE_PROBS) if num_pits < 2 else None
+        obstacles = [None] * len(segments)
+        obstacles[obstacle_idx] = Obstacle(obstacle_type) if obstacle_type is not None else None 
+                    
+        return segments, obstacles
+        
+    
+class Obstacle(object):
+    def __init__(self, type):
+        self.type = type
+        self.size = PVector(100, 100)
+        
+        if self.type == OBSTACLE_GROUND:
+            self.y = GROUND_HEIGHT - self.size.y
+            
+        elif self.type == OBSTACLE_AIR:
+            self.y = 200
+            
+    def update(self):
+        # Placeholder for animation support and / or vertical movement support.
+        pass    
+    
+        
+    def show(self, x):
+        pushStyle()
+        
+        rectMode(CORNER)
+        fill(GREEN)
+        noStroke()
+        rect(x, self.y, self.size.x, self.size.y)
+        
+        popStyle()
+      
+def random_choice(ls, probs):
+    assert(len(ls) == len(probs))
+    
+    total = sum(probs)
+    probs = [float(p) / total for p in probs]
+    
+    rnd = random.uniform(0, 1)
+    
+    threshold = 0
+    for idx, p in enumerate(probs):
+        if threshold <= rnd <= threshold + p:
+            return ls[idx]
+        threshold += p
+        
+    return ls[-1]
