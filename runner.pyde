@@ -17,12 +17,13 @@ INITIAL_VELOCITY = 7
 INITIAL_JUMP_VELOCITY = -10
 FINAL_JUMP_VELOCITY = -20
 JUMP_LEN = 150
-
+GRAVITY = 1.01
 
 SEGMENT_REGULAR = 0
 SEGMENT_PIT = 1
 SEGMENT_TYPES = [SEGMENT_REGULAR, SEGMENT_PIT]
 
+FALL_THRESHHOLD = 30
 
 screen = None
 itr = 0
@@ -150,21 +151,25 @@ class Player(object):
     
     def update(self):
         self.position += self.velocity
-        self.velocity.y += 1.01
+        self.velocity.y += GRAVITY
         
         if self.mid_jump:
             delta = millis() - self.jump_started
         
             self.velocity.y = self._get_jump_velocity(delta)
             self.mid_jump &= delta <= JUMP_LEN
-            print(self.velocity.y)
         
         # Check if on land
-        self.on_land = ((self.landscape.segment_type_at(self.position.x + self.size.x // 2) == SEGMENT_REGULAR) and
-                        self.position.y >= self.landscape.height - self.size.y)
+        is_land_segment = self.landscape.segment_type_at(self.position.x + self.size.x // 2) == SEGMENT_REGULAR 
+        self.on_land = is_land_segment and 0 <= self.position.y + self.size.y - self.landscape.height <= FALL_THRESHHOLD
+        
         if self.on_land:
             self.position.y = self.landscape.height - self.size.y
             self.velocity.y = 0
+            
+        # Check collisions - either with land or obstacles.
+        if is_land_segment and not self.on_land and self.landscape.height <= self.position.y + self.size.y:
+            print("BOOM")
 
         
     def show(self):
@@ -185,7 +190,6 @@ class Player(object):
         """Stop jumping."""
         if self.mid_jump:
             self.velocity.y = self._get_jump_velocity(millis() - self.jump_started)
-            print(self.velocity.y)
             
         self.mid_jump = False
         
