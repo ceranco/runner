@@ -177,6 +177,9 @@ class Player(object):
             print("BOOM")
             self.position.y = self.landscape.height - self.size.y
             self.on_land = True
+            
+        if self.landscape.check_obstacle_collision(self.position, self.size):
+            print("OBSTACLE " + str(millis()))
 
         
     def show(self):
@@ -289,6 +292,24 @@ class Landscape(object):
         idx = int(x + self.position) // self.gap 
 
         return self.segments[idx]
+    
+    def check_obstacle_collision(self, position, size):
+        """Checks if the given rect intersects any of the obstacles."""
+        # I gave up on making this clever and just check all obstacles.
+        seg_x = -self.position
+        for obstacle in self.obstacles:
+            if obstacle is not None:
+                obs_position = PVector(seg_x + self.gap // 2 - obstacle.size.x // 2,
+                                       obstacle.y)      
+                obs_size = obstacle.size
+                
+                if (position.x < obs_position.x + obs_size.x and position.x + size.x > obs_position.x and
+                    position.y + size.y > obs_position.y and position.y < obs_position.y + obs_size.y):
+                    return True
+                
+            seg_x += self.gap
+            
+        return False
     
     def random_configuration(self):
         """
