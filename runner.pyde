@@ -32,6 +32,8 @@ OBSTACLE_PROBS = [15, 3, 3, 3]
 OBSTACLE_CYCLE = 90
 OBSTACLE_AIR_HEIGHT = 200
 
+POWER_UP_LIFETIME = 300
+
 FALL_THRESHHOLD = 30
 
 screen = None
@@ -157,7 +159,7 @@ class Player(object):
         self.on_land = True
         self.mid_jump = False
         self.jump_started = 0
-        self.power_up = DoubleJump()
+        self.power_up = None
     
     def update(self):
         self.position += self.velocity
@@ -185,6 +187,10 @@ class Player(object):
             
         if self.landscape.check_obstacle_collision(self.position, self.size):
              print("OBSTACLE " + str(millis()))
+          
+        power_up = self.landscape.check_power_up_collision(self.position, self.size) 
+        if power_up is not None:
+            self.power_up = power_up
              
         if self.power_up is not None:
             self.power_up.update()
@@ -258,7 +264,10 @@ class Landscape(object):
         self.num_segments = 10
         self.segments = [SEGMENT_REGULAR for _ in range(self.num_segments + 1)]
         self.obstacles = [None for _ in self.segments]
+        self.power_ups = [None for _ in self.segments]
         self.gap = self.width // self.num_segments
+        self.power_up_size = 75
+        self.power_up_offset = 50
                 
     def update(self):
         self.position += self.velocity
@@ -268,17 +277,22 @@ class Landscape(object):
             self.position -= self.gap
             del self.segments[0]
             del self.obstacles[0]
+            del self.power_ups[0]
             
             # Only generate new terrain if needed.
             if len(self.segments) == self.num_segments:
-                new_segments, new_obstacles = self.random_configuration()
+                new_segments, new_obstacles, new_power_ups = self.random_configuration()
                 
                 self.segments += new_segments
                 self.obstacles += new_obstacles
+                self.power_ups += new_power_ups
             
-        for obstacle in self.obstacles:
+        for obstacle, power_up in zip(self.obstacles, self.power_ups):
             if obstacle is not None:
                 obstacle.update()
+            
+            # if power_up is not None:
+                # power_up.update()
         
     def show(self):
         pushStyle()
@@ -289,7 +303,7 @@ class Landscape(object):
         # Add some lines to see the landscape moving
   
         x = -self.position
-        for segment, obstacle in zip(self.segments, self.obstacles):
+        for segment, obstacle, power_up in zip(self.segments, self.obstacles, self.power_ups):
             if segment == SEGMENT_REGULAR:
                 rect(x, self.height, self.gap, WINDOW_HEIGHT - self.height)
                 
@@ -298,6 +312,9 @@ class Landscape(object):
                 
             if obstacle is not None:
                 obstacle.show(x + self.gap // 2 - obstacle.size.x // 2)
+                
+            if power_up is not None:
+                power_up.show(x + self.gap // 2 , self.height - self.power_up_offset, self.power_up_size)
                 
             pushStyle()
             stroke(WHITE)
@@ -332,10 +349,30 @@ class Landscape(object):
             
         return False
     
+    def check_power_up_collision(self, position, size):
+        seg_x = -self.position
+        for idx, power_up in enumerate(self.power_ups):
+            if power_up is not None:
+                power_up_position = PVector(seg_x + self.gap // 2, self.height - self.power_up_offset)
+                
+                closest = PVector(constrain(power_up_position.x, position.x, position.x + size.x),
+                                  constrain(power_up_position.y, position.y, position.y + size.y))
+                
+                distance = PVector(power_up_position.x - closest.x, power_up_position.y - closest.y)
+                distance_squared = PVector.dot(distance, distance)
+                
+                radius = self.power_up_size / 2
+                if distance_squared <= radius * radius:
+                    self.power_ups[idx] = None
+                    return power_up
+            
+            seg_x += self.gap
+
+    
     def random_configuration(self):
         """
         Generate a random environment configuration, which is a sequence of 0, 1 or 2 pits enclosed in regular landscape (only 1 segment for 0 pits).
-        For each configuration there is at most 1 obstacle on the regular segments.
+        For each configuration there is at most 1 obstacle or powerup on the regular segments.
         """
         num_pits = random_choice([0, 1, 2], [14, 5, 3])
         segments = [SEGMENT_REGULAR] + [SEGMENT_PIT] * num_pits + ([SEGMENT_REGULAR] if num_pits > 0 else [])
@@ -344,8 +381,19 @@ class Landscape(object):
         obstacle_type = random_choice(OBSTACLE_TYPES, OBSTACLE_PROBS) if num_pits < 2 else None
         obstacles = [None] * len(segments)
         obstacles[obstacle_idx] = Obstacle(obstacle_type) if obstacle_type is not None else None 
+        
+        power_ups = [None] * len(segments)
+        possible_idxs = [None]
+        for idx in range(len(power_ups)):
+            if segments[idx] == SEGMENT_REGULAR and obstacles[idx] is None:
+                possible_idxs.append(idx)
+        
+        power_up_idx = random_choice(possible_idxs, [len(possible_idxs)] + [1] * (len(possible_idxs) - 1))
+        if power_up_idx is not None:
+            power_ups[power_up_idx] = PowerUp.random()
+            
                     
-        return segments, obstacles
+        return segments, obstacles, power_ups
         
     
 class Obstacle(object):
@@ -382,7 +430,8 @@ class PowerUp(object):
     """Base powerup class, exposes behavior hooks for player events."""
     
     def __init__(self):
-        self.lifetime = 300
+        self.lifetime = POWER_UP_LIFETIME
+        self.color = color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) 
     
     def on_jump(self, player):
         pass
@@ -396,15 +445,20 @@ class PowerUp(object):
     def update(self):
         self.lifetime -= 1
 
-    def show(self, x, y):
+    def show(self, x, y, size = 50):
         if self.lifetime > 0:
             pushStyle()
             
-            fill(PURPLE)
+            fill(self.color, int(255 * self.lifetime / POWER_UP_LIFETIME))
             noStroke()
-            circle(x, y, 50)
+            circle(x, y, size)
                         
             popStyle()
+            
+    @staticmethod
+    def random():
+        """Generate a random powerup."""
+        return DoubleJump()
                 
 class DoubleJump(PowerUp):
     def __init__(self):
@@ -416,7 +470,6 @@ class DoubleJump(PowerUp):
             self.used = False
             
         elif not self.used:
-            print(1)
             player.on_land = True
             self.used = True
 
