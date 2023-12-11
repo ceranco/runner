@@ -11,6 +11,7 @@ WHITE = color(255)
 RED = color(255, 0, 0)
 GREEN = color(0, 255, 0)
 BLUE = color(0, 0, 255)
+PURPLE = color(255, 0, 255)
 
 GROUND_HEIGHT = 700
 INITIAL_VELOCITY = 7
@@ -156,6 +157,7 @@ class Player(object):
         self.on_land = True
         self.mid_jump = False
         self.jump_started = 0
+        self.power_up = DoubleJump()
     
     def update(self):
         self.position += self.velocity
@@ -182,15 +184,28 @@ class Player(object):
             self.on_land = True
             
         if self.landscape.check_obstacle_collision(self.position, self.size):
-            print("OBSTACLE " + str(millis()))
+             print("OBSTACLE " + str(millis()))
+             
+        if self.power_up is not None:
+            self.power_up.update()
+            
+            if self.power_up.lifetime == 0:
+                self.power_up = None
 
         
     def show(self):
+        pushStyle()
+        
         rectMode(CORNER)
         fill(RED)
         noStroke()
         rect(self.position.x, self.position.y, self.size.x, self.size.y)
         
+        popStyle()
+        
+        if self.power_up is not None:
+            self.power_up.show(50, 50)
+            
     def jump_press(self):
         """
         Start jumping.
@@ -198,6 +213,9 @@ class Player(object):
         The vertical velocity will increase up to a set maximum as long as `jump_release` is not called.
         In this way, the height of the jump may be controlled to allow for more granular control of the player.
         """
+        if self.power_up is not None:
+            self.power_up.on_jump(self)
+        
         if self.on_land:
             self.mid_jump = True
             self.jump_started = millis()
@@ -359,7 +377,51 @@ class Obstacle(object):
         rect(x, self.y, self.size.x, self.size.y)
         
         popStyle()
-      
+    
+class PowerUp(object):
+    """Base powerup class, exposes behavior hooks for player events."""
+    
+    def __init__(self):
+        self.lifetime = 300
+    
+    def on_jump(self, player):
+        pass
+        
+    def on_obstacle_collision(self, player):
+        pass
+        
+    def on_ground_collision(self, player):
+        pass
+        
+    def update(self):
+        self.lifetime -= 1
+
+    def show(self, x, y):
+        if self.lifetime > 0:
+            pushStyle()
+            
+            fill(PURPLE)
+            noStroke()
+            circle(x, y, 50)
+                        
+            popStyle()
+                
+class DoubleJump(PowerUp):
+    def __init__(self):
+        super(DoubleJump, self).__init__()
+        self.used = False
+        
+    def on_jump(self, player):
+        if player.on_land:
+            self.used = False
+            
+        elif not self.used:
+            print(1)
+            player.on_land = True
+            self.used = True
+
+    
+          
 def random_choice(ls, probs):
     """Returns a random element from the list with the probability distribution given by probs."""
     assert(len(ls) == len(probs))
