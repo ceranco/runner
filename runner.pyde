@@ -43,8 +43,8 @@ def setup():
     size(WINDOW_WIDTH, WINDOW_HEIGHT)
     
     global screen
-    # screen = TitleScreen()
-    screen = GameScreen()
+    screen = TitleScreen()
+    # screen = GameScreen()
     # screen = EndScreen("test")
     
 def draw():
@@ -101,14 +101,21 @@ class GameScreen(Screen):
         self.space_pressed = False
         self.landscape = Landscape()
         self.player = Player(self.landscape)
+        self.counter = ScoreCounter()
+        self.counter.start()
         
     def update(self):
         self.player.update()
         self.landscape.update()
+        self.counter.update()
+        
+        if not self.player.alive:
+            self._end_game()
     
     def show(self):
-        self.player.show()
         self.landscape.show()
+        self.counter.show()
+        self.player.show()
             
     def key_pressed(self):
         if key == JUMP_KEY:
@@ -119,6 +126,17 @@ class GameScreen(Screen):
         if key == JUMP_KEY:
             self.player.jump_release()
             self.space_pressed = False
+            
+    def _end_game(self):
+        """End-of-run routine."""
+        global screen
+
+        self.counter.stop()
+        ellapsed = "{:.1f}".format(self.counter.get_ellapsed() / 1000.0)
+        score = self.counter.get_score()
+        
+        message = "Total run time: " + str(ellapsed) + "s\nScore: " + str(score)
+        screen = EndScreen(message, self)
 
 
 class EndScreen(Screen):
@@ -134,12 +152,12 @@ class EndScreen(Screen):
             self.prev_screen.show()
 
         fill(BLACK)
-        textSize(128)
+        textSize(100)
         textAlign(CENTER, CENTER)
         text(self.message, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
         
         textSize(72)
-        text("Press " + JUMP_KEY_NAME + " to start!", WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 150)
+        text("Press " + JUMP_KEY_NAME + " to start!", WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 200)
 
         
     def key_pressed(self):
@@ -160,6 +178,7 @@ class Player(object):
         self.mid_jump = False
         self.jump_started = 0
         self.power_up = None
+        self.alive = True
     
     def update(self):
         self.position += self.velocity
@@ -181,12 +200,18 @@ class Player(object):
             
         # Check collisions - either with land or obstacles.
         if is_land_segment and not self.on_land and self.landscape.height <= self.position.y + self.size.y:
-            print("BOOM")
-            self.position.y = self.landscape.height - self.size.y
-            self.on_land = True
+            # print("BOOM")
+            # self.position.y = self.landscape.height - self.size.y
+            # self.on_land = True
+            self.alive = False
+            if self.power_up is not None:
+                self.power_up.on_ground_collision(self)
             
         if self.landscape.check_obstacle_collision(self.position, self.size):
-             print("OBSTACLE " + str(millis()))
+             # print("OBSTACLE " + str(millis()))
+            self.alive = False
+            if self.power_up is not None:
+                self.power_up.on_obstacle_collision(self)
           
         power_up = self.landscape.check_power_up_collision(self.position, self.size) 
         if power_up is not None:
@@ -210,7 +235,7 @@ class Player(object):
         popStyle()
         
         if self.power_up is not None:
-            self.power_up.show(50, 50)
+            self.power_up.show(50, 100)
             
     def jump_press(self):
         """
@@ -235,7 +260,6 @@ class Player(object):
             self.velocity.y = self._get_jump_velocity(delta)
             
         self.mid_jump = False
-        
                 
     def _get_jump_velocity(self, delta):
         """Calculates the jump velocity matching a jump key press of delta milliseconds."""
@@ -473,6 +497,52 @@ class DoubleJump(PowerUp):
             player.on_land = True
             self.used = True
 
+
+class ScoreCounter(object):
+    """Keeps track of the score for a run."""
+    
+    def _init(self):
+        self.started = millis()
+        self.stopped = self.started
+        self.running = False
+    
+    def __init__(self):
+        self._init()
+        
+    def start(self):
+        """Start the counter - future calls to `update()` will affect it."""
+        self._init()
+        self.running = True
+        
+    def stop(self):
+        """Stop the counter - future calls to `update()` will not affect it."""
+        self.stopped = millis()
+        self.running = False    
+        
+    def get_ellapsed(self):
+        """Gets the time the counter was / is running."""
+        if self.running:
+            return millis() - self.started
+        
+        return self.stopped - self.started
+        
+    def get_score(self):
+        """Gets the current score."""
+        return self.get_ellapsed() // 500
+    
+    def update(self):
+        pass
+        
+    def show(self):
+        pushStyle()
+        
+        textAlign(LEFT)
+        textSize(45)
+        fill(BLACK)
+        message = "Score: " + str(self.get_score())
+        text(message, 25, 50)
+        
+        popStyle()
     
           
 def random_choice(ls, probs):
