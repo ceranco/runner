@@ -15,7 +15,7 @@ BLUE = color(0, 0, 255)
 GROUND_HEIGHT = 700
 INITIAL_VELOCITY = 7
 INITIAL_JUMP_VELOCITY = -10
-FINAL_JUMP_VELOCITY = -20
+FINAL_JUMP_VELOCITY = -22
 JUMP_LEN = 150
 GRAVITY = 1.01
 
@@ -25,8 +25,11 @@ SEGMENT_TYPES = [SEGMENT_REGULAR, SEGMENT_PIT]
 
 OBSTACLE_GROUND = 0
 OBSTACLE_AIR = 1
-OBSTACLE_TYPES = [None, OBSTACLE_GROUND, OBSTACLE_AIR]
-OBSTACLE_PROBS = [15, 3, 2]
+OBSTACLE_ALTERNATING = 2
+OBSTACLE_TYPES = [None, OBSTACLE_GROUND, OBSTACLE_AIR, OBSTACLE_ALTERNATING]
+OBSTACLE_PROBS = [15, 3, 3, 3]
+OBSTACLE_CYCLE = 90
+OBSTACLE_AIR_HEIGHT = 200
 
 FALL_THRESHHOLD = 30
 
@@ -331,14 +334,18 @@ class Obstacle(object):
     def __init__(self, type):
         self.type = type
         self.size = PVector(100, 100)
+        self.t = 0.0
         
-        if self.type == OBSTACLE_GROUND:
+        if self.type == OBSTACLE_GROUND or self.type == OBSTACLE_ALTERNATING:
             self.y = GROUND_HEIGHT - self.size.y
             
         elif self.type == OBSTACLE_AIR:
-            self.y = 200
+            self.y = OBSTACLE_AIR_HEIGHT
             
     def update(self):
+        if self.type == OBSTACLE_ALTERNATING:
+            self.t += 1.0 / 60.0
+            self.y = map(ease_in_out_blend(self.t), 0.0, 1.0, GROUND_HEIGHT - self.size.y, OBSTACLE_AIR_HEIGHT)
         # Placeholder for animation support and / or vertical movement support.
         pass    
     
@@ -354,6 +361,7 @@ class Obstacle(object):
         popStyle()
       
 def random_choice(ls, probs):
+    """Returns a random element from the list with the probability distribution given by probs."""
     assert(len(ls) == len(probs))
     
     total = sum(probs)
@@ -368,3 +376,10 @@ def random_choice(ls, probs):
         threshold += p
         
     return ls[-1]
+
+def ease_in_out_blend(t):
+    """
+    A Bezier blend curve, which may be used to animate movement with ease-in-out behavior in a repeating pattern.
+    """
+    t = abs(((t - 1) % 2) - 1)
+    return t * t * (3.0 - 2.0 * t) 
