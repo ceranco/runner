@@ -1,3 +1,7 @@
+"""
+Assets: taken from https://chroma-dave.itch.io/pixelart-adventure-pack.
+"""
+
 import random
 
 WINDOW_WIDTH = 1800
@@ -36,8 +40,8 @@ POWER_UP_LIFETIME = 300
 
 FALL_THRESHHOLD = 30
 
+player_spritesheet = None
 screen = None
-itr = 0
 
 def setup():
     size(WINDOW_WIDTH, WINDOW_HEIGHT)
@@ -47,17 +51,16 @@ def setup():
     # screen = GameScreen()
     # screen = EndScreen("test")
     
-def draw():
-    global itr
+    # Load player spritesheet
+    global player_spritesheet
+    noSmooth() # For some reason this doesn't work outside of the setup function, so it's here as well.
+    player_spritesheet = SpriteSheet("player_spritesheet.png", 32, 6, 7)
     
+def draw():  
     background(WHITE)
-    # print("UPDATE " + str(itr))
     screen.update()
     
-    # print("SHOW " + str(itr))
     screen.show()
-    
-    itr += 1
     
 def keyPressed():
     screen.key_pressed()
@@ -100,7 +103,7 @@ class GameScreen(Screen):
     def __init__(self):
         self.space_pressed = False
         self.landscape = Landscape()
-        self.player = Player(self.landscape)
+        self.player = Player(self.landscape, player_spritesheet)
         self.counter = ScoreCounter()
         self.counter.start()
         
@@ -169,8 +172,9 @@ class EndScreen(Screen):
 class Player(object):
     """The controllable player."""
     
-    def __init__(self, landscape):
+    def __init__(self, landscape, spritesheet):
         self.size = PVector(50, 100)
+        self.draw_size = PVector(100, 100)
         self.position = PVector(150, GROUND_HEIGHT - self.size.y)
         self.velocity = PVector()
         self.landscape = landscape
@@ -179,8 +183,10 @@ class Player(object):
         self.jump_started = 0
         self.power_up = None
         self.alive = True
+        self.spritesheet = spritesheet
     
     def update(self):
+        self.spritesheet.update()
         self.position += self.velocity
         self.velocity.y += GRAVITY
         
@@ -230,7 +236,7 @@ class Player(object):
         rectMode(CORNER)
         fill(RED)
         noStroke()
-        rect(self.position.x, self.position.y, self.size.x, self.size.y)
+        self.spritesheet.show(self.position.x, self.position.y, self.draw_size.x, self.draw_size.y)
         
         popStyle()
         
@@ -544,6 +550,26 @@ class ScoreCounter(object):
         
         popStyle()
     
+class SpriteSheet(object):
+    def __init__(self, path, size, count, change_time):
+        noSmooth()
+        self.sheet = loadImage(path)
+        self.sprites = []
+        for i in range(count):
+             self.sprites.append(self.sheet.get(size * i, 0, size, size))
+        self.current = 0
+        self.counter = 0
+        self.change_time = change_time
+        
+    def update(self):
+        self.counter += 1
+        if self.counter >= self.change_time:
+            self.counter = 0
+            self.current = (self.current + 1) % len(self.sprites)
+        
+    def show(self, x, y, width, height):
+        noSmooth()
+        image(self.sprites[self.current], x, y, width, height)
           
 def random_choice(ls, probs):
     """Returns a random element from the list with the probability distribution given by probs."""
