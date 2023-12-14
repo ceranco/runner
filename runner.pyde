@@ -41,6 +41,7 @@ POWER_UP_LIFETIME = 300
 FALL_THRESHHOLD = 30
 
 player_spritesheet = None
+world_tiles = None
 screen = None
 
 def setup():
@@ -52,15 +53,18 @@ def setup():
     # screen = EndScreen("test")
     
     # Load player spritesheet
-    global player_spritesheet
+    global player_spritesheet, world_tiles
     noSmooth() # For some reason this doesn't work outside of the setup function, so it's here as well.
     player_spritesheet = SpriteSheet("player_spritesheet.png", 32, 6, 7)
+    world_tiles = WorldTiles("world_tiles.png")
     
 def draw():  
     background(WHITE)
     screen.update()
     
     screen.show()
+    # world_tiles.fill_empty(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 100)
+    # world_tiles.show_brick(100, 0, 100)
     
 def keyPressed():
     screen.key_pressed()
@@ -102,7 +106,7 @@ class GameScreen(Screen):
     """The game itself."""
     def __init__(self):
         self.space_pressed = False
-        self.landscape = Landscape()
+        self.landscape = Landscape(world_tiles)
         self.player = Player(self.landscape, player_spritesheet)
         self.counter = ScoreCounter()
         self.counter.start()
@@ -231,14 +235,7 @@ class Player(object):
 
         
     def show(self):
-        pushStyle()
-        
-        rectMode(CORNER)
-        fill(RED)
-        noStroke()
-        self.spritesheet.show(self.position.x, self.position.y, self.draw_size.x, self.draw_size.y)
-        
-        popStyle()
+        self.spritesheet.show(self.position.x - 45, self.position.y, self.draw_size.x, self.draw_size.y)
         
         if self.power_up is not None:
             self.power_up.show(50, 100)
@@ -286,7 +283,7 @@ class Landscape(object):
     At any given point, at most (parts of) 11 segments will be seen.
     """
     
-    def __init__(self):
+    def __init__(self, world_tiles):
         self.height = GROUND_HEIGHT
         self.width = WINDOW_WIDTH
         self.position = 5
@@ -298,6 +295,7 @@ class Landscape(object):
         self.gap = self.width // self.num_segments
         self.power_up_size = 75
         self.power_up_offset = 50
+        self.world_tiles = world_tiles
                 
     def update(self):
         self.position += self.velocity
@@ -325,17 +323,14 @@ class Landscape(object):
                 # power_up.update()
         
     def show(self):
-        pushStyle()
-        rectMode(CORNER)
-        fill(BLUE)
-        noStroke()
+        # Fill up the whole screen with the empty tile
+        self.world_tiles.show_empty(0, 0, max(WINDOW_WIDTH, WINDOW_HEIGHT))
         
-        # Add some lines to see the landscape moving
-  
         x = -self.position
         for segment, obstacle, power_up in zip(self.segments, self.obstacles, self.power_ups):
             if segment == SEGMENT_REGULAR:
-                rect(x, self.height, self.gap, WINDOW_HEIGHT - self.height)
+                self.world_tiles.fill_brick(x, self.height, self.gap, WINDOW_HEIGHT - self.height, self.gap)
+                # rect(x, self.height, self.gap, WINDOW_HEIGHT - self.height)
                 
             elif segment == SEGMENT_PIT:
                 pass
@@ -346,14 +341,7 @@ class Landscape(object):
             if power_up is not None:
                 power_up.show(x + self.gap // 2 , self.height - self.power_up_offset, self.power_up_size)
                 
-            pushStyle()
-            stroke(WHITE)
-            strokeWeight(5)
-            line(x, self.height, x, WINDOW_HEIGHT)
-            popStyle()
             x += self.gap
-
-        popStyle()
             
     def segment_type_at(self, x):
         """Get the segment type in the given x coordinate."""
@@ -544,7 +532,7 @@ class ScoreCounter(object):
         
         textAlign(LEFT)
         textSize(45)
-        fill(BLACK)
+        fill(WHITE)
         message = "Score: " + str(self.get_score())
         text(message, 25, 50)
         
@@ -570,7 +558,42 @@ class SpriteSheet(object):
     def show(self, x, y, width, height):
         noSmooth()
         image(self.sprites[self.current], x, y, width, height)
-          
+      
+class WorldTiles(object):
+    def __init__(self, path):
+        noSmooth()
+        self.tile_size = 160
+        self.tile_sheet_size = (1280, 1600)
+        self.tile_sheet = loadImage(path)
+        self.tiles = []
+        
+        for row_idx in range(self.tile_sheet_size[1] // self.tile_size):
+            row = []
+            for col_idx in range(self.tile_sheet_size[0] // self.tile_size):
+                row.append(self.tile_sheet.get(self.tile_size * col_idx, self.tile_size * row_idx, self.tile_size, self.tile_size))
+            self.tiles.append(row)
+        
+    def show_empty(self, x, y, size = 160):
+        world_tiles._show(5, 1, x, y, size)
+        
+    def fill_empty(self, x, y, width, height, size = 160):
+        self._fill(5, 1, x, y, size, width, height)
+        
+    def show_brick(self, x, y, size = 160):
+        world_tiles._show(1, 1, x, y, size)
+        
+    def fill_brick(self, x, y, width, height, size = 160):
+        self._fill(1, 1, x, y, size, width, height)
+        
+    def _show(self, row, col, x, y, size):
+        image(self.tiles[row][col], x, y, size, size)
+        
+    def _fill(self, row, col, x, y, size, width, height):
+        for j in range(ceil(float(width) / size)):
+            for i in range(ceil(float(height) / size)):
+                self._show(row, col, x + j * size, y + i * size, size) 
+        
+    
 def random_choice(ls, probs):
     """Returns a random element from the list with the probability distribution given by probs."""
     assert(len(ls) == len(probs))
