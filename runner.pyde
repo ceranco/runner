@@ -1,8 +1,11 @@
 """
-Assets: taken from https://chroma-dave.itch.io/pixelart-adventure-pack.
+Assets taken from:
+* https://chroma-dave.itch.io/pixelart-adventure-pack
+* https://shikashipx.itch.io/shikashis-fantasy-icons-pack
 """
 
 import random
+import copy
 
 WINDOW_WIDTH = 1800
 WINDOW_HEIGHT = 1000
@@ -32,39 +35,44 @@ OBSTACLE_GROUND = 0
 OBSTACLE_AIR = 1
 OBSTACLE_ALTERNATING = 2
 OBSTACLE_TYPES = [None, OBSTACLE_GROUND, OBSTACLE_AIR, OBSTACLE_ALTERNATING]
-OBSTACLE_PROBS = [15, 3, 3, 3]
+OBSTACLE_PROBS = [20, 6, 3, 3]
 OBSTACLE_CYCLE = 90
 OBSTACLE_AIR_HEIGHT = 200
 
 POWER_UP_LIFETIME = 300
 
-FALL_THRESHHOLD = 30
+FALL_THRESHHOLD = 45
 
 player_spritesheet = None
+bat_spritesheet = None
+warrior_spritesheet = None
 world_tiles = None
+double_jump_icon = None
 screen = None
 
 def setup():
     size(WINDOW_WIDTH, WINDOW_HEIGHT)
     
-    global screen
-    screen = TitleScreen()
-    # screen = GameScreen()
-    # screen = EndScreen("test")
-    
-    # Load player spritesheet
-    global player_spritesheet, world_tiles
+    # Load assets
+    global player_spritesheet, bat_spritesheet, warrior_spritesheet, world_tiles, double_jump_icon
     noSmooth() # For some reason this doesn't work outside of the setup function, so it's here as well.
-    player_spritesheet = SpriteSheet("player_spritesheet.png", 32, 6, 7)
+    player_spritesheet = SpriteSheet("player_spritesheet.png", 32, 32, 6, 7)
+    bat_spritesheet = SpriteSheet("bat_spritesheet.png", 32, 32, 3, 7)
+    warrior_spritesheet = SpriteSheet("warrior_spritesheet.png", 48, 32, 6, 7, True)
     world_tiles = WorldTiles("world_tiles.png")
+    double_jump_icon = loadImage("double_jump.png")
+
+    # Set initial screen
+    global screen
+    screen = TitleScreen(player_spritesheet.clone(), warrior_spritesheet.clone(), bat_spritesheet.clone())
     
 def draw():  
     background(WHITE)
     screen.update()
     
     screen.show()
-    # world_tiles.fill_empty(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, 100)
-    # world_tiles.show_brick(100, 0, 100)
+    # warrior_spritesheet.update()
+    # warrior_spritesheet.show(0, 0, 150, 100)
     
 def keyPressed():
     screen.key_pressed()
@@ -91,10 +99,31 @@ class Screen(object):
 class TitleScreen(Screen):
     """The initial game screen."""
     
+    def __init__(self, player_spritesheet, warrior_spritesheet, bat_spritesheet):
+        self.player_spritesheet = player_spritesheet
+        self.warrior_spritesheet = warrior_spritesheet
+        self.bat_spritesheet = bat_spritesheet
+    
+    def update(self):
+        player_spritesheet.update()
+        warrior_spritesheet.update()
+        bat_spritesheet.update()
+    
     def show(self):
-        textSize(72)
-        fill(BLACK)
+        # Fill up the whole screen with the empty tile
+        world_tiles.show_empty(0, 0, max(WINDOW_WIDTH, WINDOW_HEIGHT))
+        
+        player_spritesheet.show(250, 350, 250, 250)
+        warrior_spritesheet.show(1250, 350, 400, 250)
+        bat_spritesheet.show(750, 600, 250, 250)
+        
+        fill(WHITE)
         textAlign(CENTER, CENTER)
+        textSize(120)
+
+        text("The Escape",  WINDOW_WIDTH // 2, 200)
+
+        textSize(72)
         text("Press " + JUMP_KEY_NAME + " to start!", WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50)
         
     def key_pressed(self):
@@ -406,7 +435,7 @@ class Landscape(object):
             if segments[idx] == SEGMENT_REGULAR and obstacles[idx] is None:
                 possible_idxs.append(idx)
         
-        power_up_idx = random_choice(possible_idxs, [len(possible_idxs)] + [1] * (len(possible_idxs) - 1))
+        power_up_idx = random_choice(possible_idxs, [len(possible_idxs) * 2 + 5] + [1] * (len(possible_idxs) - 1))
         if power_up_idx is not None:
             power_ups[power_up_idx] = PowerUp.random()
             
@@ -418,6 +447,7 @@ class Obstacle(object):
     def __init__(self, type):
         self.type = type
         self.size = PVector(100, 100)
+        self.display_size = self.size
         self.t = 0.0
         
         if self.type == OBSTACLE_GROUND or self.type == OBSTACLE_ALTERNATING:
@@ -426,30 +456,35 @@ class Obstacle(object):
         elif self.type == OBSTACLE_AIR:
             self.y = OBSTACLE_AIR_HEIGHT
             
+        # Select asset
+        if self.type == OBSTACLE_AIR or self.type == OBSTACLE_ALTERNATING:
+            self.asset = bat_spritesheet.clone()
+            self.display_size = PVector(140, 140)
+            
+        else:
+            obs = world_tiles.get_obstacle()
+            self.asset, self.display_size = random.choice([(obs, self.display_size), (warrior_spritesheet.clone(), PVector(200, 100))])
+
     def update(self):
         if self.type == OBSTACLE_ALTERNATING:
             self.t += 1.0 / 60.0
             self.y = map(ease_in_out_blend(self.t), 0.0, 1.0, GROUND_HEIGHT - self.size.y, OBSTACLE_AIR_HEIGHT)
-        # Placeholder for animation support and / or vertical movement support.
-        pass    
-    
+
+        self.asset.update()    
         
     def show(self, x):
-        pushStyle()
-        
-        rectMode(CORNER)
-        fill(GREEN)
-        noStroke()
-        rect(x, self.y, self.size.x, self.size.y)
-        
-        popStyle()
+        self.asset.show(x - (self.display_size.x - self.size.x) // 2, 
+                        self.y - (self.display_size.y - self.size.y) // 2, 
+                        self.display_size.x, 
+                        self.display_size.y)
     
 class PowerUp(object):
     """Base powerup class, exposes behavior hooks for player events."""
     
-    def __init__(self):
+    def __init__(self, icon):
         self.lifetime = POWER_UP_LIFETIME
-        self.color = color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) 
+        # self.color = color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+        self.icon = icon 
     
     def on_jump(self, player):
         pass
@@ -467,10 +502,15 @@ class PowerUp(object):
         if self.lifetime > 0:
             pushStyle()
             
-            fill(self.color, int(255 * self.lifetime / POWER_UP_LIFETIME))
-            noStroke()
-            circle(x, y, size)
-                        
+            # fill(self.color, int(255 * self.lifetime / POWER_UP_LIFETIME))
+            # noStroke()
+            # circle(x, y, size)
+            
+            tint(255, int(255 * self.lifetime / POWER_UP_LIFETIME))
+            image(self.icon, x - size // 2, y - size // 2, size, size)
+            print(1)
+
+
             popStyle()
             
     @staticmethod
@@ -480,7 +520,7 @@ class PowerUp(object):
                 
 class DoubleJump(PowerUp):
     def __init__(self):
-        super(DoubleJump, self).__init__()
+        super(DoubleJump, self).__init__(double_jump_icon)
         self.used = False
         
     def on_jump(self, player):
@@ -539,16 +579,20 @@ class ScoreCounter(object):
         popStyle()
     
 class SpriteSheet(object):
-    def __init__(self, path, size, count, change_time):
+    def __init__(self, path, size_x, size_y, count, change_time, flip_x = False):
         noSmooth()
         self.sheet = loadImage(path)
         self.sprites = []
         for i in range(count):
-             self.sprites.append(self.sheet.get(size * i, 0, size, size))
+             self.sprites.append(self.sheet.get(size_x * i, 0, size_x, size_y))
         self.current = 0
         self.counter = 0
         self.change_time = change_time
-        
+        self.flip_x = flip_x
+    
+    def clone(self):
+        return copy.copy(self)
+    
     def update(self):
         self.counter += 1
         if self.counter >= self.change_time:
@@ -557,8 +601,27 @@ class SpriteSheet(object):
         
     def show(self, x, y, width, height):
         noSmooth()
-        image(self.sprites[self.current], x, y, width, height)
-      
+        pushMatrix()
+        if self.flip_x:
+            translate(x + width, y)
+            scale(-1, 1)
+        else:
+            translate(x, y)
+            
+        image(self.sprites[self.current], 0, 0, width, height)
+        popMatrix()
+     
+class Image(object):
+    """Wraps a PImage with the update / show  pattern."""
+    def __init__(self, img):
+        self.img = img
+        
+    def update(self):
+        pass
+        
+    def show(self, x, y, width, height):
+        image(self.img, x, y, width, height)
+       
 class WorldTiles(object):
     def __init__(self, path):
         noSmooth()
@@ -585,6 +648,9 @@ class WorldTiles(object):
     def fill_brick(self, x, y, width, height, size = 160):
         self._fill(1, 1, x, y, size, width, height)
         
+    def show_obstacle(self, x, y, size = 160):
+        self._show(5, 3, x, y, size)
+        
     def _show(self, row, col, x, y, size):
         image(self.tiles[row][col], x, y, size, size)
         
@@ -592,6 +658,12 @@ class WorldTiles(object):
         for j in range(ceil(float(width) / size)):
             for i in range(ceil(float(height) / size)):
                 self._show(row, col, x + j * size, y + i * size, size) 
+         
+    def get_obstacle(self):
+        return self._get_image(3, 5)
+                   
+    def _get_image(self, row, col):
+        return Image(self.tiles[row][col])
         
     
 def random_choice(ls, probs):
