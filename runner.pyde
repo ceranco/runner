@@ -187,7 +187,7 @@ class EndScreen(Screen):
         if self.prev_screen is not None:
             self.prev_screen.show()
 
-        fill(BLACK)
+        fill(WHITE)
         textSize(100)
         textAlign(CENTER, CENTER)
         text(self.message, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
@@ -328,6 +328,7 @@ class Landscape(object):
                 
     def update(self):
         self.position += self.velocity
+        self.velocity += 0.001
         
         if self.position >= self.gap:
             # Generate a new segment and an optional obstacles.
