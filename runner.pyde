@@ -509,7 +509,6 @@ class PowerUp(object):
             
             tint(255, int(255 * self.lifetime / POWER_UP_LIFETIME))
             image(self.icon, x - size // 2, y - size // 2, size, size)
-            print(1)
 
 
             popStyle()
